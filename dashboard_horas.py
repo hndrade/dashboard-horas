@@ -71,7 +71,7 @@ st.markdown("""
     ### Informações
     - O gestor pode escolher o número de dias para a compensação.
     
-    A estrutura da tabela a ser carregada, é: *Nome do Empregado | Horas Totais	| Data Inicial	| Data Final*
+    A estrutura da tabela a ser carregada é: **Nome do Empregado (str)| Horas Totais	(int)| Data Inicial	(date)| Data Final (date)**
 
     """)
 
