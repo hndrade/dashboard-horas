@@ -142,9 +142,9 @@ if uploaded_file:
         # Data término padrão: último dia útil do mês
         periodo_termino_cumprimento = last_business_day_of_month(hoje.year, hoje.month)
 
-        # Seletor de data início e término
-        data_inicio_cumprimento = st.date_input("Data Início", periodo_inicio_cumprimento)
-        data_termino_cumprimento = st.date_input("Data Término", periodo_termino_cumprimento)
+        # Seletor de data início e término formatado em DD/MM/AAAA
+        data_inicio_cumprimento = st.date_input("Data Início", periodo_inicio_cumprimento.strftime('%d/%m/%Y'))
+        data_termino_cumprimento = st.date_input("Data Término", periodo_termino_cumprimento.strftime('%d/%m/%Y'))
 
         # Calcular dias úteis dentro do range selecionado no Período de Cumprimento
         working_days = calculate_working_days(data_inicio_cumprimento, data_termino_cumprimento)
