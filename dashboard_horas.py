@@ -3,35 +3,37 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 
+# Função para encontrar o próximo dia útil
+def next_business_day(start_date):
+    while start_date.weekday() >= 5:  # Verifica se é sábado (5) ou domingo (6)
+        start_date += timedelta(days=1)
+    return start_date
+
+
+# Função para encontrar o último dia útil do mês
+def last_business_day_of_month(year, month):
+    last_day = pd.Timestamp(year, month, 1) + pd.offsets.MonthEnd(0)
+    while last_day.weekday() >= 5:  # Verifica se é sábado ou domingo
+        last_day -= timedelta(days=1)
+    return last_day
+
+
 # Função para converter string de horas no formato HH:MM:SS ou -HH:MM para número de horas
 def convert_time_string_to_hours_v2(time_value):
     try:
-        # Se for uma string, realiza a conversão
         if isinstance(time_value, str):
-            # Verificar se a hora é negativa
             negative = time_value.startswith('-')
             time_value = time_value.replace('-', '').strip()
-
-            # Separar as partes de horas, minutos e segundos
             time_parts = time_value.split(':')
-            
-            # Caso o formato seja HH ou HH:MM, completar os segundos
             if len(time_parts) == 1:
                 time_parts.append('00')
                 time_parts.append('00')
             elif len(time_parts) == 2:
                 time_parts.append('00')
-
-            # Converter as partes para inteiros
             time_parts = list(map(int, time_parts))
-
-            # Calcular as horas totais
             total_hours = time_parts[0] + time_parts[1] / 60 + time_parts[2] / 3600
             return -total_hours if negative else total_hours
-        
-        # Caso contrário, retorna 0
         return 0
-
     except Exception as e:
         return f"Erro: {e}"
 
@@ -41,24 +43,16 @@ def calculate_working_days(start_date, end_date):
     return pd.date_range(start=start_date, end=end_date, freq='B')  # 'B' considera apenas dias úteis
 
 
-# Função para distribuir as horas com equilíbrio entre positivos e negativos
+# Função para distribuir as horas
 def distribute_hours_equally(df, working_days):
     for _, row in df.iterrows():
         employee_hours = row['Horas Totais']
         days_needed = row['Dias para Compensar']
-
         if days_needed > 0:
-            # Se as horas forem positivas, dividimos pelos dias para criar uma carga negativa por dia
-            if employee_hours > 0:
-                hours_per_day = -employee_hours / days_needed
-            # Se as horas forem negativas, dividimos para gerar uma carga positiva por dia
-            else:
-                hours_per_day = -employee_hours / days_needed
-
+            hours_per_day = -employee_hours / days_needed if employee_hours > 0 else -employee_hours / days_needed
             assigned_days = working_days[:days_needed]
             df.at[row.name, 'Horas por Dia'] = convert_hours_to_hhmm(hours_per_day)
             df.at[row.name, 'Dias Sugeridos'] = ", ".join([day.strftime('%d/%m/%Y') for day in assigned_days])
-
     return df
 
 
@@ -68,21 +62,6 @@ def convert_hours_to_hhmm(total_hours):
     minutes = abs(int((total_hours - hours) * 60))
     sign = "-" if total_hours < 0 else ""
     return f"{sign}{abs(hours):02d}:{minutes:02d}"
-
-
-# Função para obter o próximo dia útil a partir de uma data
-def next_business_day(date):
-    while date.weekday() >= 5:  # Se cair no sábado (5) ou domingo (6)
-        date += timedelta(days=1)
-    return date
-
-
-# Função para calcular o último dia útil do mês atual
-def last_business_day_of_month(date):
-    last_day = pd.Timestamp(date.year, date.month, 1) + pd.offsets.MonthEnd(0)
-    while last_day.weekday() >= 5:  # Ajusta se cair em fim de semana
-        last_day -= timedelta(days=1)
-    return last_day
 
 
 # Cabeçalho do dashboard
@@ -143,36 +122,32 @@ if uploaded_file:
     st.write("### Selecione a Equipe")
 
     equipes = df['Equipe'].unique().tolist()
-    equipes.insert(0, 'Selecionar Todos')  # Adicionar a opção "Selecionar Todos"
+    equipes.insert(0, 'Selecionar Todos')
 
     equipe_selecionada = st.selectbox("Equipe", equipes)
 
-    # Filtro de equipe
     if equipe_selecionada != 'Selecionar Todos':
         df_filtrado = df_filtrado[df_filtrado['Equipe'] == equipe_selecionada]
 
-    # Verificar se há dados no DataFrame filtrado
     if df_filtrado.empty:
         st.warning("Não existem dados correspondentes")
     else:
-        # Seção "Período para Cumprimento"
+        # **Novo Seletor: Período para Cumprimento**
         st.write("### Período para Cumprimento")
+        
+        # Data início padrão: hoje ou próximo dia útil
         hoje = datetime.today()
-        inicio_default = next_business_day(hoje)
-        fim_default = last_business_day_of_month(hoje)
+        periodo_inicio_cumprimento = next_business_day(hoje)
 
-        # Seletor de data de início e término no formato DD/MM/AAAA
-        data_inicio_cumprimento = st.date_input("Data Início", value=inicio_default, format="DD/MM/YYYY")
-        data_termino_cumprimento = st.date_input("Data Término", value=fim_default, format="DD/MM/YYYY")
+        # Data término padrão: último dia útil do mês
+        periodo_termino_cumprimento = last_business_day_of_month(hoje.year, hoje.month)
 
-        # Calcular dias úteis entre a data de início e término selecionadas
+        # Seletor de data início e término
+        data_inicio_cumprimento = st.date_input("Data Início", periodo_inicio_cumprimento)
+        data_termino_cumprimento = st.date_input("Data Término", periodo_termino_cumprimento)
+
+        # Calcular dias úteis dentro do range selecionado no Período de Cumprimento
         working_days = calculate_working_days(data_inicio_cumprimento, data_termino_cumprimento)
-
-        # Exibir a tabela filtrada com os empregados
-        st.write(f"**Período Selecionado: {periodo_inicio} até {periodo_termino}**")
-        st.write(f"**Equipe Selecionada: {equipe_selecionada}**")
-        st.write("**Dados filtrados:**")
-        st.dataframe(df_filtrado)
 
         # Seletor para número de dias a serem compensados por empregado
         st.write("### Selecione o número de dias para compensação por empregado")
@@ -186,4 +161,11 @@ if uploaded_file:
                                                                  value=int(row['Dias para Compensar']))
 
         # Distribuir horas entre os dias úteis
-        df_filtrado = distribute_hours
+        df_filtrado = distribute_hours_equally(df_filtrado, working_days)
+
+        # Exibir a tabela atualizada com as horas distribuídas
+        st.write("### Sugerido de Horas por Dia")
+        st.dataframe(df_filtrado[['Nome do Empregado', 'Horas Totais', 'Dias para Compensar', 'Horas por Dia', 'Dias Sugeridos']])
+
+else:
+    st.write("Por favor, carregue um arquivo para iniciar.")
