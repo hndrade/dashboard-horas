@@ -3,44 +3,29 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 
-# Função para encontrar o primeiro dia útil do mês
-def first_business_day_of_month(year, month, data_inicial_col):
-    data_inicial_col = pd.to_datetime(data_inicial_col, errors='coerce', format='%d/%m/%Y')
-    month_data = data_inicial_col[(data_inicial_col.dt.year == year) & (data_inicial_col.dt.month == month)]
-    
-    if not month_data.empty:
-        first_day = month_data.min()  # Data mais antiga no período selecionado
-    else:
-        first_day = pd.Timestamp(year, month, 1)
-
-    while first_day.weekday() >= 5:  # Ajusta se cair em fim de semana
-        first_day += timedelta(days=1)
-
-    return first_day
-
-
-# Função para encontrar o último dia útil do mês
-def last_business_day_of_month(year, month):
-    last_day = pd.Timestamp(year, month, 1) + pd.offsets.MonthEnd(0)
-
-    while last_day.weekday() >= 5:  # Ajusta se cair em fim de semana
-        last_day -= timedelta(days=1)
-
-    return last_day
-
-
-# Função para converter string de horas no formato HH:MM:SS para número de horas
-def convert_time_string_to_hours(time_value):
+# Função para converter string de horas no formato HH:MM:SS ou -HH:MM para número de horas
+def convert_time_string_to_hours_v2(time_value):
     try:
-        # Se o valor já for um objeto de tempo, converte diretamente
-        if isinstance(time_value, datetime.time):
-            return time_value.hour + time_value.minute / 60 + time_value.second / 3600
-        
-        # Se for uma string, realiza a conversão normalmente
+        # Se for uma string, realiza a conversão
         if isinstance(time_value, str):
+            # Verificar se a hora é negativa
             negative = time_value.startswith('-')
-            time_value = time_value.replace('-', '')
-            time_parts = list(map(int, time_value.split(':')))
+            time_value = time_value.replace('-', '').strip()
+
+            # Separar as partes de horas, minutos e segundos
+            time_parts = time_value.split(':')
+            
+            # Caso o formato seja HH ou HH:MM, completar os segundos
+            if len(time_parts) == 1:
+                time_parts.append('00')
+                time_parts.append('00')
+            elif len(time_parts) == 2:
+                time_parts.append('00')
+
+            # Converter as partes para inteiros
+            time_parts = list(map(int, time_parts))
+
+            # Calcular as horas totais
             total_hours = time_parts[0] + time_parts[1] / 60 + time_parts[2] / 3600
             return -total_hours if negative else total_hours
         
@@ -48,8 +33,7 @@ def convert_time_string_to_hours(time_value):
         return 0
 
     except Exception as e:
-        st.error(f"Erro ao converter horas: {e}")
-        return 0
+        return f"Erro: {e}"
 
 
 # Função para calcular dias úteis dentro de um período
@@ -93,7 +77,7 @@ st.markdown("""
     ### Informações
     - O gestor pode escolher o número de dias para a compensação.
     
-    A estrutura da tabela a ser carregada é: **Nome do Empregado (str)| Horas Totais (HH:MM:SS)| Data Inicial (date, formato DD/MM/AAAA)| Data Final (date, formato DD/MM/AAAA)| Equipe (str)**
+    A estrutura da tabela a ser carregada é: **Nome do Empregado (str)| Horas Totais (HH:MM:SS ou -HH:MM)| Data Inicial (date, formato DD/MM/AAAA)| Data Final (date, formato DD/MM/AAAA)| Equipe (str)**
 
     """)
 
@@ -103,16 +87,16 @@ uploaded_file = st.file_uploader("Carregue a planilha de controle de horas (.xls
 if uploaded_file:
     # Carregar a planilha
     if uploaded_file.name.endswith('.xlsx'):
-        df = pd.read_excel(uploaded_file)
+        df = pd.read_excel(uploaded_file, dtype={'Horas Totais': str})
     elif uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file)
+        df = pd.read_csv(uploaded_file, dtype={'Horas Totais': str})
 
     # Convertendo horas para número de horas
-    df['Horas Totais'] = df['Horas Totais'].apply(convert_time_string_to_hours)
+    df['Horas Totais'] = df['Horas Totais'].apply(convert_time_string_to_hours_v2)
 
     # Convertendo datas para o formato correto
-    df['Data Inicial'] = pd.to_datetime(df['Data Inicial'], format='%d/%m/%Y', errors='coerce')
-    df['Data Final'] = pd.to_datetime(df['Data Final'], format='%d/%m/%Y', errors='coerce')
+    df['Data Inicial'] = pd.to_datetime(df['Data Inicial'], format='%Y-%m-%d', errors='coerce')
+    df['Data Final'] = pd.to_datetime(df['Data Final'], format='%Y-%m-%d', errors='coerce')
 
     # Obter a menor data de início e a maior data de término
     menor_data_inicio = df['Data Inicial'].min()
@@ -152,37 +136,36 @@ if uploaded_file:
     if equipe_selecionada != 'Selecionar Todos':
         df_filtrado = df_filtrado[df_filtrado['Equipe'] == equipe_selecionada]
 
-    # Botão para limpar filtro
-    if st.button("Limpar Filtro"):
-        equipe_selecionada = 'Selecionar Todos'
-        df_filtrado = df
+    # Verificar se há dados no DataFrame filtrado
+    if df_filtrado.empty:
+        st.warning("Não existem dados correspondentes")
+    else:
+        # Calcular dias úteis entre a data de início e término filtradas
+        working_days = calculate_working_days(periodo_inicio_dt, periodo_termino_dt)
 
-    # Calcular dias úteis entre a data de início e término filtradas
-    working_days = calculate_working_days(periodo_inicio_dt, periodo_termino_dt)
+        # Exibir a tabela filtrada com os empregados
+        st.write(f"**Período Selecionado: {periodo_inicio} até {periodo_termino}**")
+        st.write(f"**Equipe Selecionada: {equipe_selecionada}**")
+        st.write("**Dados filtrados:**")
+        st.dataframe(df_filtrado)
 
-    # Exibir a tabela filtrada com os empregados
-    st.write(f"**Período Selecionado: {periodo_inicio} até {periodo_termino}**")
-    st.write(f"**Equipe Selecionada: {equipe_selecionada}**")
-    st.write("**Dados filtrados:**")
-    st.dataframe(df_filtrado)
+        # Seletor para número de dias a serem compensados por empregado
+        st.write("### Selecione o número de dias para compensação por empregado")
+        if 'Dias para Compensar' not in df_filtrado.columns:
+            df_filtrado['Dias para Compensar'] = 1  # Valor padrão de 1 dia para compensar
 
-    # Seletor para número de dias a serem compensados por empregado
-    st.write("### Selecione o número de dias para compensação por empregado")
-    if 'Dias para Compensar' not in df_filtrado.columns:
-        df_filtrado['Dias para Compensar'] = 1  # Valor padrão de 1 dia para compensar
+        for i, row in df_filtrado.iterrows():
+            df_filtrado.at[i, 'Dias para Compensar'] = st.slider(f"{row['Nome do Empregado']}",
+                                                                 min_value=1,
+                                                                 max_value=len(working_days),
+                                                                 value=int(row['Dias para Compensar']))
 
-    for i, row in df_filtrado.iterrows():
-        df_filtrado.at[i, 'Dias para Compensar'] = st.slider(f"{row['Nome do Empregado']}",
-                                                             min_value=1,
-                                                             max_value=len(working_days),
-                                                             value=int(row['Dias para Compensar']))
+        # Distribuir horas entre os dias úteis
+        df_filtrado = distribute_hours_equally(df_filtrado, working_days)
 
-    # Distribuir horas entre os dias úteis
-    df_filtrado = distribute_hours_equally(df_filtrado, working_days)
-
-    # Exibir a tabela atualizada com as horas distribuídas
-    st.write("### Sugerido de Horas por Dia")
-    st.dataframe(df_filtrado[['Nome do Empregado', 'Horas Totais', 'Dias para Compensar', 'Horas por Dia', 'Dias Sugeridos']])
+        # Exibir a tabela atualizada com as horas distribuídas
+        st.write("### Sugerido de Horas por Dia")
+        st.dataframe(df_filtrado[['Nome do Empregado', 'Horas Totais', 'Dias para Compensar', 'Horas por Dia', 'Dias Sugeridos']])
 
 else:
     st.write("Por favor, carregue um arquivo para iniciar.")
