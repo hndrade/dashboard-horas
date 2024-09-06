@@ -70,6 +70,22 @@ def convert_hours_to_hhmm(total_hours):
     return f"{sign}{abs(hours):02d}:{minutes:02d}"
 
 
+# Função para obter o próximo dia útil
+def get_next_business_day(today):
+    next_day = today
+    while next_day.weekday() >= 5:  # Se for sábado (5) ou domingo (6)
+        next_day += timedelta(days=1)
+    return next_day
+
+
+# Função para obter o último dia útil do mês
+def get_last_business_day_of_month(date):
+    last_day = pd.Timestamp(date.year, date.month, 1) + pd.offsets.MonthEnd(0)
+    while last_day.weekday() >= 5:  # Ajusta se cair em fim de semana
+        last_day -= timedelta(days=1)
+    return last_day
+
+
 # Cabeçalho do dashboard
 st.title("Controle de Horas Extras e Negativas")
 
@@ -140,16 +156,22 @@ if uploaded_file:
     if df_filtrado.empty:
         st.warning("Não existem dados correspondentes")
     else:
-        # Calcular dias úteis entre a data de início e término filtradas
-        working_days = calculate_working_days(periodo_inicio_dt, periodo_termino_dt)
+        # --- Seção para o Período para Cumprimento ---
+        st.write("### Período para Cumprimento")
 
-        # Exibir a tabela filtrada com os empregados
-        st.write(f"**Período Selecionado: {periodo_inicio} até {periodo_termino}**")
-        st.write(f"**Equipe Selecionada: {equipe_selecionada}**")
-        st.write("**Dados filtrados:**")
-        st.dataframe(df_filtrado)
+        # Definir as datas padrão
+        hoje = datetime.today()
+        periodo_inicio_cumprimento = get_next_business_day(hoje)
+        periodo_termino_cumprimento = get_last_business_day_of_month(hoje)
 
-        # Seletor para número de dias a serem compensados por empregado
+        # Seletor para o Período de Cumprimento
+        data_inicio_cumprimento = st.date_input("Data Início", periodo_inicio_cumprimento)
+        data_termino_cumprimento = st.date_input("Data Término", periodo_termino_cumprimento)
+
+        # Calcular os dias úteis para cumprimento
+        working_days_cumprimento = calculate_working_days(data_inicio_cumprimento, data_termino_cumprimento)
+
+        # --- Seção para Seleção do número de dias para compensação por empregado ---
         st.write("### Selecione o número de dias para compensação por empregado")
         if 'Dias para Compensar' not in df_filtrado.columns:
             df_filtrado['Dias para Compensar'] = 1  # Valor padrão de 1 dia para compensar
@@ -157,15 +179,4 @@ if uploaded_file:
         for i, row in df_filtrado.iterrows():
             df_filtrado.at[i, 'Dias para Compensar'] = st.slider(f"{row['Nome do Empregado']}",
                                                                  min_value=1,
-                                                                 max_value=len(working_days),
-                                                                 value=int(row['Dias para Compensar']))
-
-        # Distribuir horas entre os dias úteis
-        df_filtrado = distribute_hours_equally(df_filtrado, working_days)
-
-        # Exibir a tabela atualizada com as horas distribuídas
-        st.write("### Sugerido de Horas por Dia")
-        st.dataframe(df_filtrado[['Nome do Empregado', 'Horas Totais', 'Dias para Compensar', 'Horas por Dia', 'Dias Sugeridos']])
-
-else:
-    st.write("Por favor, carregue um arquivo para iniciar.")
+                                                                 max_value=len
