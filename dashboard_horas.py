@@ -85,8 +85,12 @@ if uploaded_file:
     elif uploaded_file.name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, dtype={'Horas Totais': str})
 
+    # CORREÇÃO: Remover espaços em branco do nome das colunas
+    df.columns = df.columns.str.strip()
+
     # Convertendo horas para número de horas
     df['Horas Totais'] = df['Horas Totais'].apply(convert_time_string_to_hours_v2)
+    
 
     # Convertendo datas para o formato correto
     df['Data Inicial'] = pd.to_datetime(df['Data Inicial'], format='%Y-%m-%d', errors='coerce')
@@ -169,3 +173,4 @@ if uploaded_file:
 
 else:
     st.write("Por favor, carregue um arquivo para iniciar.")
+
